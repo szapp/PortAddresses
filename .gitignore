@@ -1,0 +1,8 @@
+/pyperclip/
+/work/
+/idaapi.txt
+
+*.pyc
+
+*.sublime-project
+*.sublime-workspace
