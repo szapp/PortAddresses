@@ -52,6 +52,8 @@ def name(addr):
         offset += 1
         name_hr = idaapi.get_long_name(addr_spec, 16)  # Searchable name
         name_spec = idaapi.get_ea_name(addr_spec)  # Identifiable name
+        if addr_spec < 0:
+            raise IndexError('Could not find any name')
 
     Info = namedtuple('Info', ['name', 'uid', 'addr', 'offset'])
     return Info(name=name_hr,
@@ -86,8 +88,11 @@ def encode(addr, jump=True, clipboard=True):
     """
     if jump:
         idaapi.jumpto(addr)
-    info = name(addr)
-    output = info.uid + '+' + info.offset
+    try:
+        info = name(addr)
+        output = info.uid + '+' + info.offset
+    except IndexError:
+        output = 'not_found__invalid_address'
 
     if clipboard is True:
         pyperclip.copy(output)
