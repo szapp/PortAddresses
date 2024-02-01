@@ -1,7 +1,6 @@
 """
 Jump utilities
 """
-from __future__ import print_function
 import idaapi
 
 __all__ = [

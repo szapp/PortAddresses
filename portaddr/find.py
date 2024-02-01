@@ -1,7 +1,6 @@
 """
 Utility functions to find symbols by their address or name
 """
-from __future__ import print_function
 from collections import namedtuple
 from ctypes import c_int32
 import idaapi
@@ -12,8 +11,10 @@ from .text import strip
 
 __all__ = [
     'name',
+    'encode',
     'decode',
-    'each',
+    'batch_encode',
+    'batch_decode',
 ]
 
 
@@ -59,7 +60,7 @@ def name(addr):
                 offset=hex(offset)[2:].upper())
 
 
-def encode(addr):
+def encode(addr, jump=True, clipboard=True):
     """
     Jump to and encode the symbol name of a memory address. The result
     is copied into the clipboard in the form "uid+offset", where uid
@@ -70,34 +71,61 @@ def encode(addr):
     ----------
     addr : int
         Memory address
+
+    jump : bool, optional
+        Jump to the address
+
+    clipboard : bool, optional
+        Copy the result to the clipboard. If False, the clipboard is not
+        altered. Default is True
+
+    Returns
+    -------
+    output : str
+        Formatted symbol name and offset
     """
-    idaapi.jumpto(addr)
+    if jump:
+        idaapi.jumpto(addr)
     info = name(addr)
-    print(info)
-    pyperclip.copy(info.uid + '+' + info.offset)
+    output = info.uid + '+' + info.offset
+
+    if clipboard is True:
+        pyperclip.copy(output)
+
+    return output
 
 
-def decode(info=None, clipboard=True):  # noqa: C901
+def decode(info=None, out_format='hex', jump=True,  # noqa: C901
+           clipboard=True):
     """
     Decode mangled name with offset and find address
 
     Parameters
     ----------
-    info : str
+    info : str, optional
         Mangled name and offset as 'MangledName+HexOffset'. If
         'clipboard', get the string from the clipboard. If None, prompt
         the user for input. Default is None
 
-    clipboard : boolean or str or it
-        If True or 'hex', copy the found address as hexadecimal to the
-        clipboard. If False, the clipboard is not altered. If 'dec',
-        copy the address as 32-bit decimal to the clipboard. If
-        'dechex', copy the address as 'DecAddress; //HexAddress'. If
-        'const', copy the address as
+    out_format : {'dec', 'hexdec', 'assign'} or int, optional
+        Format of the address output. If 'hex', format as hexadecimal.
+        If 'dec', format as 32-bit decimal. If 'dechex', format as
+        'DecAddress; //HexAddress'. If 'assign', as
         'DemangledName = DecAddress; //HexAddress'. If int, same as
-        'const' but spaces to fill length of int until the '=', e.g. 20
+        'assign' but spaces to fill length of int until the '=', e.g. 20
         results in 'DemangledName       = DecAddress; //HexAddress'.
-        Default is True
+
+    jump : bool, optional
+        Jump to the address
+
+    clipboard : bool, optional
+        Copy the result to the clipboard. If False, the clipboard is not
+        altered. Default is True
+
+    Returns
+    -------
+    output : str
+        Formatted output
     """
     if info is None:
         info = idaapi.askstr(42, 'MangledName+HexOffset', 'Address to decode')
@@ -116,42 +144,150 @@ def decode(info=None, clipboard=True):  # noqa: C901
     addr = int(idaapi.get_name_ea(0, text))
     name_hr = idaapi.get_long_name(addr, 16)
     addr += offset
-    idaapi.jumpto(addr)
     addr_str = '0x' + hex(addr)[2:].upper()
     dec = str(c_int32(addr).value)
     dechex = dec + '; //' + addr_str
     dname = strip(name_hr)
     output = dname + ' = ' + dechex
-    print(output)
-    if clipboard is False:
-        return
 
-    if clipboard is True or clipboard == 'hex':
-        copy = addr_str
-    elif clipboard == 'dec':
-        copy = dec
-    elif clipboard == 'dechex':
-        copy = dechex
-    elif clipboard == 'const':
-        copy = output
-    elif isinstance(clipboard, int) and clipboard > 0:
-        copy = ('const int ' + dname + ' ').ljust(clipboard) + '= ' + dechex
+    if jump:
+        idaapi.jumpto(addr)
+
+    if out_format == 'hex':
+        output = addr_str
+    elif out_format == 'dec':
+        output = dec
+    elif out_format == 'dechex':
+        output = dechex
+    elif out_format == 'assign':
+        pass
+    elif isinstance(out_format, int) and out_format > 0:
+        output = ('const int ' + dname + ' ').ljust(out_format) + '= ' + dechex
     else:
-        raise ValueError('Invalid argument for \'clipboard\'.')
-    pyperclip.copy(copy)
+        raise ValueError('Invalid argument for \'out_format\'.')
+
+    if clipboard is True:
+        pyperclip.copy(output)
+
+    return output
 
 
-def each(it):
+def batch_encode(addr_list, clipboard=True, verbose=True):
     """
-    Encode and print each memory address in a list
+    Batch encode a list of addresses
 
     Parameters
     ----------
-    it : iterable or iterator of int
-        Sequence of integer memory addresses
+    addr_list : iterable or iterator of int
+        Sequence of integer addresses to encode
+
+    clipboard : bool, optional
+        Copy the result to the clipboard. If False, the clipboard is not
+        altered. Default is True
+
+    verbose : bool, optional
+        Print information. Default is True
+
+    Returns
+    -------
+    output : list
+        List of formatted symbol names as 'uid+offset'
+
+    Raises
+    ------
+    TypeError
+        If `addr_list` is not a sequence
+
+    ValueError
+        If `addr_list` does not contain all integers
 
     See also
     --------
-    encode : Encode and copy the symbol information at an address
+    encode :
+        Encoding function
     """
-    return (encode(i) for i in it)
+    if not hasattr(addr_list, '__len__'):
+        raise TypeError('Argument \'addr_list\' is not an iterable')
+    if not all(map(lambda x: isinstance(x, int), addr_list)):
+        raise ValueError('Argument \'addr_list\' may only contain integers')
+    output = []
+    for addr in addr_list:
+        formatted_name = encode(addr, False, False)
+        output.append(formatted_name)
+
+    if clipboard is True:
+        pyperclip.copy(str(output))
+
+    if verbose:
+        print('done')
+
+    return output
+
+
+def batch_decode(info_list='clipboard', out_format='hex', clipboard=True,
+                 verbose=True):
+    """
+    Batch decode a list of symbol identifiers
+
+    Parameters
+    ----------
+    info_list : iterable or iterator of str or 'clipboard', optional
+        Sequence of string symbol names in the form 'uid+offset' to
+        decode. If 'clipboard', load the contents of the clipboard.
+        Default is 'clipboard'
+
+    out_format : {'dec', 'hexdec', 'assign'} or int, optional
+        Format of the address output. If 'hex', format as hexadecimal.
+        If 'dec', format as 32-bit decimal. If 'dechex', format as
+        'DecAddress; //HexAddress'. If 'assign', as
+        'DemangledName = DecAddress; //HexAddress'. If int, same as
+        'assign' but spaces to fill length of int until the '=', e.g. 20
+        results in 'DemangledName       = DecAddress; //HexAddress'.
+
+    clipboard : bool, optional
+        Copy the result to the clipboard. If False, the clipboard is not
+        altered. Default is True
+
+    verbose : bool, optional
+        Print information. Default is True
+
+    Returns
+    -------
+    output : str
+        Paragraph of addresses formatted as `out_format`
+
+    Raises
+    ------
+    TypeError
+        If `info_list` is not a sequence
+
+    ValueError
+        If `info_list` does not contain all strings
+
+    See also
+    --------
+    decode :
+        Decoding function
+    """
+    if isinstance(info_list, str) and info_list == 'clipboard':
+        info_list = str(pyperclip.paste())
+        info_list = info_list.strip('[]').split(',')
+        info_list = [il.strip(' "\'') for il in info_list]
+
+    if not hasattr(info_list, '__len__'):
+        raise TypeError('Argument \'info_list\' is not an iterable')
+    if not all(map(lambda x: isinstance(x, str), info_list)):
+        raise ValueError('Argument \'info_list\' may only contain strings')
+    output = []
+    for info in info_list:
+        output.append(decode(info, out_format, False, False))
+
+    output = '\n'.join(output)
+
+    if clipboard is True:
+        pyperclip.copy(output)
+
+    if verbose:
+        print('done')
+
+    return output

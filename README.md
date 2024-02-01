@@ -30,6 +30,8 @@ Find the corresponding address in memory in executable B.
 _printf = 8007492; //0x7A2F44
 ```
 
+For a collection of addresses, the batch functions `pa.find.batch_encode` and `pa.find.batch_decode` are useful.
+
 ## Dependencies
 - IDA with the IDAPython plugin (Python 2.7.18), specifically the Python package `idaapi`
 - pyperclip (1.8.2)
