@@ -1,9 +1,11 @@
 """
 Utility functions to find symbols by their address or name
 """
+from __future__ import print_function
 from collections import namedtuple
 from ctypes import c_int32
 import idaapi
+from idc import ScreenEA
 import pyperclip
 
 from .text import strip
@@ -39,7 +41,7 @@ def name(addr):
     fnc = idaapi.get_func(addr)
     if fnc:
         addr_spec = int(fnc.startEA)
-        offset = addr - addr_spec
+        offset = int(addr) - addr_spec
     else:
         addr_spec = int(addr)
         offset = 0
@@ -60,6 +62,10 @@ def name(addr):
                 uid=name_spec,
                 addr='0x'+hex(addr_spec)[2:].upper(),
                 offset=hex(offset)[2:].upper())
+
+
+def here():
+    return name(ScreenEA())
 
 
 def encode(addr, jump=True, clipboard=True):
@@ -175,6 +181,20 @@ def decode(info=None, out_format='hex', jump=True,  # noqa: C901
         pyperclip.copy(output)
 
     return output
+
+
+def format_here(out_format='assign', clipboard=True):
+    inp = encode(ScreenEA(), False, False)
+    return decode(inp, out_format, False, clipboard)
+
+
+def each(addr_list):
+    gen = (hex(i) + ': ' + encode(i) for i in addr_list)
+
+    def cont():
+        return next(gen)
+
+    return cont
 
 
 def batch_encode(addr_list, clipboard=True, verbose=True):
